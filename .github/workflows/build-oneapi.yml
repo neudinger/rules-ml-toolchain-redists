@@ -75,25 +75,25 @@ jobs:
           set -euo pipefail
           metadata="dist/intel-oneapi-toolkit-${{ inputs.version }}-${{ inputs.os_id }}-${{ inputs.arch }}.json"
           python3 - "$metadata" > dist/release-notes.md <<'PY'
-import json
-import sys
-from pathlib import Path
+          import json
+          import sys
+          from pathlib import Path
 
-metadata = json.loads(Path(sys.argv[1]).read_text())
+          metadata = json.loads(Path(sys.argv[1]).read_text())
 
-print(f"# {metadata['release_tag']}")
-print()
-print("Generated oneAPI redist archive for rules_ml_toolchain.")
-print()
-print("| Field | Value |")
-print("| --- | --- |")
-for key in ["archive_name", "archive_size", "sha256", "release_url"]:
-    print(f"| {key} | `{metadata[key]}` |")
-print()
-print("```starlark")
-print(metadata["starlark_tuple"])
-print("```")
-PY
+          print(f"# {metadata['release_tag']}")
+          print()
+          print("Generated oneAPI redist archive for rules_ml_toolchain.")
+          print()
+          print("| Field | Value |")
+          print("| --- | --- |")
+          for key in ["archive_name", "archive_size", "sha256", "release_url"]:
+              print(f"| {key} | `{metadata[key]}` |")
+          print()
+          print("```starlark")
+          print(metadata["starlark_tuple"])
+          print("```")
+          PY
 
       - name: Publish GitHub release
         shell: bash
