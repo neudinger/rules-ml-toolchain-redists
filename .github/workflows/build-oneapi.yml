@@ -1,0 +1,114 @@
+name: Build oneAPI redist
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Intel oneAPI toolkit version.
+        required: true
+        default: 2026.0.0.198
+      os_id:
+        description: Target OS identifier used by rules_ml_toolchain.
+        required: true
+        default: ubuntu_24.04
+      arch:
+        description: Target architecture.
+        required: true
+        default: x86_64
+      installer_url:
+        description: Intel oneAPI offline installer URL.
+        required: true
+        default: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/71180075-e4e3-4c6f-bbbb-19017ed0cf7d/intel-oneapi-toolkit-2026.0.0.198_offline.sh
+      accept_intel_eula:
+        description: Type true to confirm Intel EULA acceptance for this run.
+        required: true
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check Intel EULA input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.accept_intel_eula }}" != "true" ]]; then
+            echo "accept_intel_eula must be true before downloading or installing oneAPI." >&2
+            exit 1
+          fi
+
+      - name: Check disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h "${GITHUB_WORKSPACE}"
+          available_bytes="$(df --output=avail -B1 "${GITHUB_WORKSPACE}" | tail -n 1 | tr -d ' ')"
+          min_free_bytes=25000000000
+          if (( available_bytes < min_free_bytes )); then
+            echo "insufficient disk space for oneAPI redist build" >&2
+            echo "available: ${available_bytes} bytes" >&2
+            echo "required: ${min_free_bytes} bytes" >&2
+            exit 1
+          fi
+
+      - name: Build archive
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          OS_ID: ${{ inputs.os_id }}
+          ARCH: ${{ inputs.arch }}
+          INSTALLER_URL: ${{ inputs.installer_url }}
+          ACCEPT_INTEL_EULA: yes
+          REPOSITORY: ${{ github.repository }}
+        run: scripts/build_oneapi_redist.sh
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="dist/intel-oneapi-toolkit-${{ inputs.version }}-${{ inputs.os_id }}-${{ inputs.arch }}.json"
+          python3 - "$metadata" > dist/release-notes.md <<'PY'
+import json
+import sys
+from pathlib import Path
+
+metadata = json.loads(Path(sys.argv[1]).read_text())
+
+print(f"# {metadata['release_tag']}")
+print()
+print("Generated oneAPI redist archive for rules_ml_toolchain.")
+print()
+print("| Field | Value |")
+print("| --- | --- |")
+for key in ["archive_name", "archive_size", "sha256", "release_url"]:
+    print(f"| {key} | `{metadata[key]}` |")
+print()
+print("```starlark")
+print(metadata["starlark_tuple"])
+print("```")
+PY
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="oneapi-v${{ inputs.version }}-${{ inputs.os_id }}-${{ inputs.arch }}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release already exists: ${tag}" >&2
+            exit 1
+          fi
+          gh release create "${tag}" \
+            dist/*.tar.xz \
+            dist/*.tar.xz.sha256 \
+            dist/*.json \
+            --title "${tag}" \
+            --notes-file dist/release-notes.md

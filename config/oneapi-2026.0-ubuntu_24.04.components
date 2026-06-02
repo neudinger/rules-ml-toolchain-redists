@@ -1,0 +1,13 @@
+intel.oneapi.lin.dpcpp-cpp-compiler
+intel.oneapi.lin.dpcpp-cpp-common
+intel.oneapi.lin.compilers-common
+intel.oneapi.lin.compilers-common.runtime
+intel.oneapi.lin.openmp
+intel.oneapi.lin.dpl
+intel.oneapi.lin.tbb.devel
+intel.oneapi.lin.tbb.runtime
+intel.oneapi.lin.umf
+intel.oneapi.lin.tcm
+intel.oneapi.lin.oneapi-common.licensing
+intel.oneapi.lin.oneapi-common.vars
+intel.oneapi.lin.oneapi-common.oneapi-vars

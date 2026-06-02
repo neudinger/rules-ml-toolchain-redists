@@ -1,0 +1,12 @@
+dist/
+work/
+stage/
+*.log
+*.tmp
+*.tar
+*.tar.gz
+*.tar.xz
+*.sha256
+*.json
+*.sh
+!scripts/*.sh
