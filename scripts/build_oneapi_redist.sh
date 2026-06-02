@@ -50,7 +50,7 @@ for tool in "${required_tools[@]}"; do
   fi
 done
 
-components="$(paste -sd, "${COMPONENT_FILE}")"
+components="$(paste -sd: "${COMPONENT_FILE}")"
 if [[ -z "${components}" ]]; then
   echo "component list is empty: ${COMPONENT_FILE}" >&2
   exit 1
@@ -75,18 +75,26 @@ echo "Downloading ${INSTALLER_URL}"
 curl --fail --location --retry 3 --retry-delay 10 --output "${installer_path}" "${INSTALLER_URL}"
 chmod +x "${installer_path}"
 
+run_installer() {
+  env \
+    HOME="${INSTALLER_ENV_DIR}/home" \
+    XDG_CACHE_HOME="${INSTALLER_ENV_DIR}/cache" \
+    XDG_CONFIG_HOME="${INSTALLER_ENV_DIR}/config" \
+    XDG_DATA_HOME="${INSTALLER_ENV_DIR}/data" \
+    bash "${installer_path}" "$@"
+}
+
 echo "Installing oneAPI ${VERSION} into ${INSTALL_DIR}"
-env \
-  HOME="${INSTALLER_ENV_DIR}/home" \
-  XDG_CACHE_HOME="${INSTALLER_ENV_DIR}/cache" \
-  XDG_CONFIG_HOME="${INSTALLER_ENV_DIR}/config" \
-  XDG_DATA_HOME="${INSTALLER_ENV_DIR}/data" \
-  bash "${installer_path}" \
-    -a \
-    --silent \
-    --eula accept \
-    --components "${components}" \
-    --install-dir "${INSTALL_DIR}"
+if ! run_installer \
+  -a \
+  --silent \
+  --eula accept \
+  --components "${components}" \
+  --install-dir "${INSTALL_DIR}"; then
+  echo "oneAPI installer failed. Available package components:" >&2
+  run_installer -a --list-components >&2 || true
+  exit 1
+fi
 
 echo "Pruning installer state"
 rm -rf \
