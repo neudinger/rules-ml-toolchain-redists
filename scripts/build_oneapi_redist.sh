@@ -11,6 +11,8 @@ ACCEPT_INTEL_EULA="${ACCEPT_INTEL_EULA:-}"
 REPOSITORY="${REPOSITORY:-${GITHUB_REPOSITORY:-<owner>/rules-ml-toolchain-redists}}"
 MAX_RELEASE_ASSET_BYTES="${MAX_RELEASE_ASSET_BYTES:-2000000000}"
 MIN_FREE_BYTES="${MIN_FREE_BYTES:-25000000000}"
+ZSTD_LEVEL="${ZSTD_LEVEL:-22}"
+ZSTD_THREADS="${ZSTD_THREADS:-0}"
 
 major="${VERSION%%.*}"
 rest="${VERSION#*.}"
@@ -25,7 +27,7 @@ STAGE_ROOT="${WORK_DIR}/stage"
 INSTALL_DIR="${STAGE_ROOT}/oneapi"
 INSTALLER_ENV_DIR="${WORK_DIR}/installer-env"
 
-ARCHIVE_BASENAME="intel-oneapi-toolkit-${VERSION}-${OS_ID}-${ARCH}.tar.xz"
+ARCHIVE_BASENAME="intel-oneapi-toolkit-${VERSION}-${OS_ID}-${ARCH}.tar.zst"
 ARCHIVE="${DIST_DIR}/${ARCHIVE_BASENAME}"
 SHA256_FILE="${ARCHIVE}.sha256"
 METADATA_FILE="${DIST_DIR}/intel-oneapi-toolkit-${VERSION}-${OS_ID}-${ARCH}.json"
@@ -42,7 +44,7 @@ if [[ ! -f "${COMPONENT_FILE}" ]]; then
   exit 1
 fi
 
-required_tools=(curl df tar sha256sum python3)
+required_tools=(curl df tar sha256sum python3 zstd)
 for tool in "${required_tools[@]}"; do
   if ! command -v "${tool}" >/dev/null 2>&1; then
     echo "required tool not found: ${tool}" >&2
@@ -53,6 +55,11 @@ done
 components="$(paste -sd: "${COMPONENT_FILE}")"
 if [[ -z "${components}" ]]; then
   echo "component list is empty: ${COMPONENT_FILE}" >&2
+  exit 1
+fi
+
+if (( ZSTD_LEVEL < 1 || ZSTD_LEVEL > 22 )); then
+  echo "ZSTD_LEVEL must be between 1 and 22: ${ZSTD_LEVEL}" >&2
   exit 1
 fi
 
@@ -105,7 +112,13 @@ rm -rf \
   "${INSTALL_DIR}/.installer_home"
 find "${INSTALL_DIR}" -type f -name '*.log' -delete
 
-echo "Creating ${ARCHIVE}"
+zstd_args=(--no-progress "-T${ZSTD_THREADS}")
+if (( ZSTD_LEVEL > 19 )); then
+  zstd_args+=(--ultra)
+fi
+zstd_args+=("-${ZSTD_LEVEL}")
+
+echo "Creating ${ARCHIVE} with zstd level ${ZSTD_LEVEL}"
 tar \
   --sort=name \
   --mtime=@0 \
@@ -113,8 +126,8 @@ tar \
   --group=0 \
   --numeric-owner \
   -C "${STAGE_ROOT}" \
-  -cJf "${ARCHIVE}" \
-  oneapi
+  -cf - \
+  oneapi | zstd "${zstd_args[@]}" -o "${ARCHIVE}" -
 
 archive_size="$(stat -c%s "${ARCHIVE}")"
 if (( archive_size >= MAX_RELEASE_ASSET_BYTES )); then
@@ -142,7 +155,7 @@ starlark_tuple="$(cat <<EOF
 EOF
 )"
 
-export VERSION OS_ID ARCH INSTALLER_URL component_file_metadata ARCHIVE_BASENAME archive_size \
+export VERSION OS_ID ARCH INSTALLER_URL component_file_metadata ARCHIVE_BASENAME archive_size ZSTD_LEVEL \
   archive_sha256 RELEASE_TAG RELEASE_URL starlark_tuple METADATA_FILE
 python3 - <<'PY'
 import json
@@ -157,10 +170,12 @@ metadata = {
     "component_file": os.environ["component_file_metadata"],
     "archive_name": os.environ["ARCHIVE_BASENAME"],
     "archive_size": int(os.environ["archive_size"]),
+    "compression": "zstd",
     "sha256": os.environ["archive_sha256"],
     "release_tag": os.environ["RELEASE_TAG"],
     "release_url": os.environ["RELEASE_URL"],
     "starlark_tuple": os.environ["starlark_tuple"],
+    "zstd_level": int(os.environ["ZSTD_LEVEL"]),
 }
 
 path = Path(os.environ["METADATA_FILE"])

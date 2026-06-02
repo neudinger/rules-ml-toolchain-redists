@@ -58,6 +58,13 @@ jobs:
             exit 1
           fi
 
+      - name: Install compression tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y zstd
+
       - name: Build archive
         shell: bash
         env:
@@ -74,26 +81,24 @@ jobs:
         run: |
           set -euo pipefail
           metadata="dist/intel-oneapi-toolkit-${{ inputs.version }}-${{ inputs.os_id }}-${{ inputs.arch }}.json"
-          python3 - "$metadata" > dist/release-notes.md <<'PY'
-          import json
+          python3 -c 'import json
           import sys
           from pathlib import Path
 
           metadata = json.loads(Path(sys.argv[1]).read_text())
 
-          print(f"# {metadata['release_tag']}")
+          print("# " + metadata["release_tag"])
           print()
           print("Generated oneAPI redist archive for rules_ml_toolchain.")
           print()
           print("| Field | Value |")
           print("| --- | --- |")
-          for key in ["archive_name", "archive_size", "sha256", "release_url"]:
+          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "release_url"]:
               print(f"| {key} | `{metadata[key]}` |")
           print()
           print("```starlark")
           print(metadata["starlark_tuple"])
-          print("```")
-          PY
+          print("```")' "$metadata" > dist/release-notes.md
 
       - name: Publish GitHub release
         shell: bash
@@ -107,8 +112,8 @@ jobs:
             exit 1
           fi
           gh release create "${tag}" \
-            dist/*.tar.xz \
-            dist/*.tar.xz.sha256 \
+            dist/*.tar.zst \
+            dist/*.tar.zst.sha256 \
             dist/*.json \
             --title "${tag}" \
             --notes-file dist/release-notes.md

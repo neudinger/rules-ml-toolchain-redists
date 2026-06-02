@@ -36,14 +36,15 @@ oneapi-v2026.0.0.198-ubuntu_24.04-x86_64
 with these release assets:
 
 ```text
-intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.xz
-intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.xz.sha256
+intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.zst
+intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.zst.sha256
 intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.json
 ```
 
-GitHub release assets must be smaller than 2 GB. The build fails if the archive
-is too large. If that happens, use S3, CloudFront, or GCS instead of GitHub
-Releases for the final Bazel URL.
+The archive is compressed with zstd at level 22 by default. GitHub release
+assets must be smaller than 2 GB. The build fails if the archive is too large.
+If that happens, use S3, CloudFront, or GCS instead of GitHub Releases for the
+final Bazel URL.
 
 ## Use From rules_ml_toolchain
 
@@ -52,7 +53,7 @@ JSON metadata into `gpu/sycl/sycl_redist_versions.bzl`:
 
 ```starlark
 "ubuntu_24.04_2026.0": [
-    "https://github.com/<owner>/rules-ml-toolchain-redists/releases/download/oneapi-v2026.0.0.198-ubuntu_24.04-x86_64/intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.xz",
+    "https://github.com/<owner>/rules-ml-toolchain-redists/releases/download/oneapi-v2026.0.0.198-ubuntu_24.04-x86_64/intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.tar.zst",
     "<sha256>",
     "oneapi",
 ],
@@ -68,6 +69,16 @@ bazel build //cc/tests/gpu/sycl:all \
   --repo_env=ONEAPI_VERSION=2026.0 \
   --repo_env=OS=ubuntu_24.04
 ```
+
+## Local Build
+
+```bash
+ACCEPT_INTEL_EULA=yes \
+REPOSITORY=neudinger/rules-ml-toolchain-redists \
+scripts/build_oneapi_redist.sh
+```
+
+Set `ZSTD_LEVEL=1..22` to override the compression level.
 
 ## Local Dry Checks
 

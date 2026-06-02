@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 ARCHIVE.tar.xz" >&2
+  echo "usage: $0 ARCHIVE.tar.zst" >&2
 }
 
 if [[ $# -ne 1 ]]; then
@@ -21,7 +21,18 @@ fi
 listing="$(mktemp)"
 trap 'rm -f "$listing"' EXIT
 
-tar -tf "$archive" > "$listing"
+case "$archive" in
+  *.tar.zst)
+    if ! command -v zstd >/dev/null 2>&1; then
+      echo "required tool not found: zstd" >&2
+      exit 1
+    fi
+    zstd -dc "$archive" | tar -tf - > "$listing"
+    ;;
+  *)
+    tar -tf "$archive" > "$listing"
+    ;;
+esac
 
 if ! grep -Eq '^oneapi/?$|^oneapi/' "$listing"; then
   echo "archive does not contain top-level oneapi/ directory" >&2

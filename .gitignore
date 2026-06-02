@@ -6,6 +6,7 @@ stage/
 *.tar
 *.tar.gz
 *.tar.xz
+*.tar.zst
 *.sha256
 *.json
 *.sh
