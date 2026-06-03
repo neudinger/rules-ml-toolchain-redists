@@ -74,6 +74,7 @@ jobs:
           INSTALLER_URL: ${{ inputs.installer_url }}
           ACCEPT_INTEL_EULA: yes
           REPOSITORY: ${{ github.repository }}
+          MAX_RELEASE_ASSET_BYTES: 2147483648
         run: scripts/build_oneapi_redist.sh
 
       - name: Prepare release notes

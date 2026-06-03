@@ -42,7 +42,7 @@ intel-oneapi-toolkit-2026.0.0.198-ubuntu_24.04-x86_64.json
 ```
 
 The archive is compressed with zstd at level 22 by default. GitHub release
-assets must be smaller than 2 GB. The build fails if the archive is too large.
+assets must be smaller than 2 GiB. The build fails if the archive is too large.
 If that happens, use S3, CloudFront, or GCS instead of GitHub Releases for the
 final Bazel URL.
 
