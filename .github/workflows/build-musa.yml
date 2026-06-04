@@ -1,0 +1,145 @@
+name: Build MUSA redist
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Moore Threads MUSA SDK version.
+        required: true
+      package:
+        description: MUSA package key from rules_ml_toolchain gpu/musa/musa_redist.bzl.
+        required: true
+      os_id:
+        description: Target OS identifier used by rules_ml_toolchain.
+        required: true
+      arch:
+        description: Target architecture.
+        required: true
+        default: x86_64
+      musa_source_url:
+        description: MUSA SDK archive URL. May be omitted when MUSA_SOURCE_URL secret or variable is set.
+        required: false
+      musa_source_sha256:
+        description: MUSA SDK archive sha256. May be omitted when MUSA_SOURCE_SHA256 secret or variable is set.
+        required: false
+      musa_source_strip_prefix:
+        description: Optional root directory inside the source archive.
+        required: false
+      accept_musa_terms:
+        description: Type true to confirm MUSA SDK license and redistribution approval for this run.
+        required: true
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check MUSA terms input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.accept_musa_terms }}" != "true" ]]; then
+            echo "accept_musa_terms must be true before downloading or packaging MUSA." >&2
+            exit 1
+          fi
+
+      - name: Check MUSA source inputs
+        shell: bash
+        env:
+          MUSA_SOURCE_URL: ${{ inputs.musa_source_url || secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
+          MUSA_SOURCE_SHA256: ${{ inputs.musa_source_sha256 || secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MUSA_SOURCE_URL}" ]]; then
+            echo "MUSA source URL is required as an input, secret, or repository variable." >&2
+            exit 1
+          fi
+          if [[ -z "${MUSA_SOURCE_SHA256}" ]]; then
+            echo "MUSA source sha256 is required as an input, secret, or repository variable." >&2
+            exit 1
+          fi
+
+      - name: Check disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h "${GITHUB_WORKSPACE}"
+          available_bytes="$(df --output=avail -B1 "${GITHUB_WORKSPACE}" | tail -n 1 | tr -d ' ')"
+          min_free_bytes=25000000000
+          if (( available_bytes < min_free_bytes )); then
+            echo "insufficient disk space for MUSA redist build" >&2
+            echo "available: ${available_bytes} bytes" >&2
+            echo "required: ${min_free_bytes} bytes" >&2
+            exit 1
+          fi
+
+      - name: Install archive tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y unzip zstd
+
+      - name: Build archive
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          PACKAGE: ${{ inputs.package }}
+          OS_ID: ${{ inputs.os_id }}
+          ARCH: ${{ inputs.arch }}
+          MUSA_SOURCE_URL: ${{ inputs.musa_source_url || secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
+          MUSA_SOURCE_SHA256: ${{ inputs.musa_source_sha256 || secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
+          MUSA_SOURCE_STRIP_PREFIX: ${{ inputs.musa_source_strip_prefix || vars.MUSA_SOURCE_STRIP_PREFIX }}
+          ACCEPT_MUSA_TERMS: yes
+          REPOSITORY: ${{ github.repository }}
+          MAX_RELEASE_ASSET_BYTES: 2147483648
+        run: scripts/build_musa_redist.sh
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata="dist/musa-toolkit-${{ inputs.version }}-${{ inputs.package }}-${{ inputs.os_id }}-${{ inputs.arch }}.json"
+          python3 -c 'import json
+          import sys
+          from pathlib import Path
+
+          metadata = json.loads(Path(sys.argv[1]).read_text())
+
+          print("# " + metadata["release_tag"])
+          print()
+          print("Generated MUSA redist archive for rules_ml_toolchain.")
+          print()
+          print("| Field | Value |")
+          print("| --- | --- |")
+          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "source_sha256", "release_url"]:
+              print(f"| {key} | `{metadata[key]}` |")
+          print()
+          print("```starlark")
+          print(metadata["starlark_update"])
+          print("```")' "$metadata" > dist/release-notes.md
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="musa-v${{ inputs.version }}-${{ inputs.package }}-${{ inputs.os_id }}-${{ inputs.arch }}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release already exists: ${tag}" >&2
+            exit 1
+          fi
+          gh release create "${tag}" \
+            dist/*.tar.zst \
+            dist/*.tar.zst.sha256 \
+            dist/*.json \
+            --title "${tag}" \
+            --notes-file dist/release-notes.md
