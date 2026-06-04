@@ -47,12 +47,12 @@ Run the `Build MUSA redist` workflow manually.
 
 Provide these inputs:
 
-- `version`: MUSA SDK version, for example `5.1.0`.
+- `version`: MUSA SDK version. Default: `5.1.0`.
 - `package`: matching `MUSA_REDIST` key from
-  `rules_ml_toolchain/gpu/musa/musa_redist.bzl`, for example
-  `musa_sdk_5_1_0_cc2_2_deb`.
-- `os_id`: target OS identifier, for example `ubuntu`.
-- `arch`: target architecture, currently `x86_64`.
+  `rules_ml_toolchain/gpu/musa/musa_redist.bzl`. Default:
+  `musa_sdk_5_1_0_cc3_1_deb`.
+- `os_id`: target OS identifier. Default: `ubuntu`.
+- `arch`: target architecture. Default: `x86_64`.
 - `musa_source_url`: explicit MUSA SDK archive URL, or set
   `MUSA_SOURCE_URL` as a repository secret or variable.
 - `musa_source_sha256`: explicit source archive sha256, or set
@@ -107,15 +107,15 @@ release notes or JSON metadata into the matching `MUSA_REDIST` entry in
 `gpu/musa/musa_redist.bzl`:
 
 ```starlark
-"musa_sdk_5_1_0_cc2_2_deb": _entry(
+"musa_sdk_5_1_0_cc3_1_deb": _entry(
     "5.1.0",
     ["5.1.0"],
-    ["MTT S4000"],
+    ["MTT S5000"],
     ["Ubuntu"],
-    "2051875072112726016",
-    "MUSA_SDK_5.1.0.CC2.2.DEB",
+    "2051966049083068416",
+    "MUSA_SDK_5.1.0.CC3.1.DEB",
     "deb",
-    url = "https://github.com/<owner>/rules-ml-toolchain-redists/releases/download/musa-v5.1.0-musa_sdk_5_1_0_cc2_2_deb-ubuntu-x86_64/musa-toolkit-5.1.0-musa_sdk_5_1_0_cc2_2_deb-ubuntu-x86_64.tar.zst",
+    url = "https://github.com/<owner>/rules-ml-toolchain-redists/releases/download/musa-v5.1.0-musa_sdk_5_1_0_cc3_1_deb-ubuntu-x86_64/musa-toolkit-5.1.0-musa_sdk_5_1_0_cc3_1_deb-ubuntu-x86_64.tar.zst",
     sha256 = "<sha256>",
     strip_prefix = "",
     root = "musa",
@@ -146,7 +146,7 @@ For MUSA:
 ```bash
 ACCEPT_MUSA_TERMS=yes \
 VERSION=5.1.0 \
-PACKAGE=musa_sdk_5_1_0_cc2_2_deb \
+PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
 OS_ID=ubuntu \
 ARCH=x86_64 \
 MUSA_SOURCE_URL=<sdk-archive-url> \
@@ -165,7 +165,7 @@ These checks do not download the installer:
 bash -n scripts/*.sh
 ACCEPT_INTEL_EULA=no scripts/build_oneapi_redist.sh
 ACCEPT_MUSA_TERMS=no scripts/build_musa_redist.sh
-ACCEPT_MUSA_TERMS=yes VERSION=5.1.0 PACKAGE=musa_sdk_5_1_0_cc2_2_deb OS_ID=ubuntu scripts/build_musa_redist.sh
+ACCEPT_MUSA_TERMS=yes VERSION=5.1.0 PACKAGE=musa_sdk_5_1_0_cc3_1_deb OS_ID=ubuntu scripts/build_musa_redist.sh
 ```
 
 The dry-run commands should fail before download.

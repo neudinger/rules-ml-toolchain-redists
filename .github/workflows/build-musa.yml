@@ -6,12 +6,15 @@ on:
       version:
         description: Moore Threads MUSA SDK version.
         required: true
+        default: 5.1.0
       package:
         description: MUSA package key from rules_ml_toolchain gpu/musa/musa_redist.bzl.
         required: true
+        default: musa_sdk_5_1_0_cc3_1_deb
       os_id:
         description: Target OS identifier used by rules_ml_toolchain.
         required: true
+        default: ubuntu
       arch:
         description: Target architecture.
         required: true
