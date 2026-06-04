@@ -87,11 +87,11 @@ jobs:
               ;;
             archive)
               if [[ -z "${MUSA_SOURCE_URL}" ]]; then
-                echo "MUSA source URL is required as an input, secret, or repository variable for archive builds." >&2
+                echo "MUSA_SOURCE_URL is required as a repository secret or variable for archive builds." >&2
                 exit 1
               fi
               if [[ -z "${MUSA_SOURCE_SHA256}" ]]; then
-                echo "MUSA source sha256 is required as an input, secret, or repository variable for archive builds." >&2
+                echo "MUSA_SOURCE_SHA256 is required as a repository secret or variable for archive builds." >&2
                 exit 1
               fi
               ;;

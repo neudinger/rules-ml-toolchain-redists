@@ -77,7 +77,8 @@ that are provided explicitly by maintainers.
 The default workflow build targets MTT S80 and uses archive mode. Archive mode
 in GitHub Actions does not expose URL or hash workflow inputs. Configure
 `MUSA_SOURCE_URL` as a repository secret or variable and `MUSA_SOURCE_SHA256` as
-a repository variable before running the default build.
+a repository variable before running the default build. In GitHub, use
+`Settings > Secrets and variables > Actions` for those values.
 
 MTT S80 support uses archive mode. The current public Moore Threads APT repo is
 the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys, while the
