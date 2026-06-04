@@ -21,6 +21,7 @@ MUSA_DOCKER_DIGEST="${MUSA_DOCKER_DIGEST:-}"
 MUSA_DOCKER_PLATFORM="${MUSA_DOCKER_PLATFORM:-linux/amd64}"
 MUSA_DOCKER_PULL="${MUSA_DOCKER_PULL:-yes}"
 MUSA_DEVICE="${MUSA_DEVICE:-}"
+MUSA_REQUIRED_LIBS="${MUSA_REQUIRED_LIBS:-}"
 ACCEPT_MUSA_TERMS="${ACCEPT_MUSA_TERMS:-}"
 REPOSITORY="${REPOSITORY:-${GITHUB_REPOSITORY:-<owner>/rules-ml-toolchain-redists}}"
 MAX_RELEASE_ASSET_BYTES="${MAX_RELEASE_ASSET_BYTES:-2147483648}"
@@ -42,6 +43,7 @@ ARCHIVE_BASENAME="musa-toolkit-${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}.tar.zst"
 ARCHIVE="${DIST_DIR}/${ARCHIVE_BASENAME}"
 SHA256_FILE="${ARCHIVE}.sha256"
 METADATA_FILE="${DIST_DIR}/musa-toolkit-${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}.json"
+STARLARK_FILE="${DIST_DIR}/musa-toolkit-${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}.bzl"
 RELEASE_TAG="musa-v${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}"
 RELEASE_URL="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/${ARCHIVE_BASENAME}"
 
@@ -173,6 +175,7 @@ find_library() {
 validate_toolkit_root() {
   local root="$1"
   local missing=()
+  local required_libs=()
 
   if [[ ! -x "$root/bin/mcc" && ! -f "$root/bin/mcc" ]]; then
     missing+=("bin/mcc")
@@ -181,7 +184,8 @@ validate_toolkit_root() {
     missing+=("include")
   fi
 
-  for lib in libmusart.so libmublas.so libmudnn.so; do
+  read -r -a required_libs <<< "$(required_musa_libs)"
+  for lib in "${required_libs[@]}"; do
     if [[ -z "$(find_library "$root" "$lib")" ]]; then
       missing+=("$lib")
     fi
@@ -190,6 +194,26 @@ validate_toolkit_root() {
   if (( ${#missing[@]} > 0 )); then
     fail "invalid MUSA toolkit root '${root}'. Missing required components: ${missing[*]}"
   fi
+}
+
+required_musa_libs() {
+  local libs=()
+
+  if [[ -n "$MUSA_REQUIRED_LIBS" ]]; then
+    printf '%s\n' "$MUSA_REQUIRED_LIBS"
+    return
+  fi
+
+  libs=(libmusart.so libmublas.so)
+  case "$MUSA_DEVICE" in
+    S80|S3000)
+      ;;
+    *)
+      libs+=(libmudnn.so)
+      ;;
+  esac
+
+  printf '%s\n' "${libs[*]}"
 }
 
 version_series() {
@@ -539,7 +563,8 @@ if (( archive_size >= MAX_RELEASE_ASSET_BYTES )); then
   exit 1
 fi
 
-"${ROOT_DIR}/scripts/verify_musa_archive.sh" "$ARCHIVE"
+MUSA_REQUIRED_LIBS="$(required_musa_libs)"
+MUSA_REQUIRED_LIBS="$MUSA_REQUIRED_LIBS" "${ROOT_DIR}/scripts/verify_musa_archive.sh" "$ARCHIVE"
 
 archive_sha256="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
 printf '%s  %s\n' "$archive_sha256" "$ARCHIVE_BASENAME" > "$SHA256_FILE"
@@ -557,14 +582,16 @@ starlark_update="$(cat <<EOF
 ${starlark_kwargs}
 EOF
 )"
+printf '%s\n' "$starlark_update" > "$STARLARK_FILE"
 
 export VERSION PACKAGE OS_ID ARCH MUSA_DEVICE MUSA_SOURCE_KIND MUSA_SOURCE_SHA256 \
-  MUSA_SOURCE_STRIP_PREFIX MUSA_APT_REPOSITORY MUSA_APT_DISTRIBUTION \
-  MUSA_APT_COMPONENT MUSA_APT_BINARY_ARCH APT_PACKAGES_INDEX_SHA256 \
-  APT_PACKAGES_JSON MUSA_DOCKER_IMAGE MUSA_DOCKER_DIGEST \
-  MUSA_DOCKER_PLATFORM MUSA_DOCKER_PULL MUSA_DOCKER_RESOLVED_DIGEST \
-  ARCHIVE_BASENAME archive_size ZSTD_LEVEL archive_sha256 RELEASE_TAG \
-  RELEASE_URL starlark_kwargs starlark_update METADATA_FILE
+  MUSA_SOURCE_STRIP_PREFIX MUSA_REQUIRED_LIBS MUSA_APT_REPOSITORY \
+  MUSA_APT_DISTRIBUTION MUSA_APT_COMPONENT MUSA_APT_BINARY_ARCH \
+  APT_PACKAGES_INDEX_SHA256 APT_PACKAGES_JSON MUSA_DOCKER_IMAGE \
+  MUSA_DOCKER_DIGEST MUSA_DOCKER_PLATFORM MUSA_DOCKER_PULL \
+  MUSA_DOCKER_RESOLVED_DIGEST ARCHIVE_BASENAME archive_size ZSTD_LEVEL \
+  archive_sha256 RELEASE_TAG RELEASE_URL starlark_kwargs starlark_update \
+  METADATA_FILE STARLARK_FILE
 python3 - <<'PY'
 import json
 import os
@@ -579,12 +606,14 @@ metadata = {
     "source_kind": os.environ["MUSA_SOURCE_KIND"],
     "source_sha256": os.environ["MUSA_SOURCE_SHA256"],
     "source_strip_prefix": os.environ["MUSA_SOURCE_STRIP_PREFIX"],
+    "required_libs": os.environ["MUSA_REQUIRED_LIBS"].split(),
     "archive_name": os.environ["ARCHIVE_BASENAME"],
     "archive_size": int(os.environ["archive_size"]),
     "compression": "zstd",
     "sha256": os.environ["archive_sha256"],
     "release_tag": os.environ["RELEASE_TAG"],
     "release_url": os.environ["RELEASE_URL"],
+    "starlark_file": Path(os.environ["STARLARK_FILE"]).name,
     "starlark_kwargs": os.environ["starlark_kwargs"],
     "starlark_update": os.environ["starlark_update"],
     "zstd_level": int(os.environ["ZSTD_LEVEL"]),
@@ -616,6 +645,7 @@ PY
 echo "Archive: ${ARCHIVE}"
 echo "SHA256: ${archive_sha256}"
 echo "Metadata: ${METADATA_FILE}"
+echo "Starlark: ${STARLARK_FILE}"
 echo
 echo "Starlark update:"
 printf '%s\n' "$starlark_update"

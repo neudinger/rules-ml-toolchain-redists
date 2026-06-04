@@ -34,6 +34,7 @@ on:
       musa_docker_digest:
         description: Optional expected image digest, for example sha256:...
         required: false
+        default: sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f
       musa_docker_platform:
         description: Docker platform.
         required: true
@@ -208,5 +209,6 @@ jobs:
             dist/*.tar.zst \
             dist/*.tar.zst.sha256 \
             dist/*.json \
+            dist/*.bzl \
             --title "${tag}" \
             --notes-file dist/release-notes.md

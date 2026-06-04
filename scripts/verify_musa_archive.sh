@@ -54,11 +54,7 @@ if ! grep -Eq '^musa/include/?$|^musa/include/' "$listing"; then
   exit 1
 fi
 
-required_libs=(
-  libmusart.so
-  libmublas.so
-  libmudnn.so
-)
+read -r -a required_libs <<< "${MUSA_REQUIRED_LIBS:-libmusart.so libmublas.so libmudnn.so}"
 
 for lib in "${required_libs[@]}"; do
   escaped_lib="${lib//./\\.}"

@@ -59,7 +59,8 @@ Provide these inputs:
 - `musa_docker_image`: Docker image containing the MUSA toolkit. Default:
   `mthreads/musa:rc3.1.1-devel-ubuntu22.04`.
 - `musa_docker_digest`: optional expected image digest, for example
-  `sha256:...`.
+  `sha256:...`. Default:
+  `sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f`.
 - `musa_docker_platform`: Docker platform. Default: `linux/amd64`.
 - `musa_apt_repository`: Moore Threads APT repository. Default:
   `https://dl.mthreads.com/repo/repository/ubuntu2204`.
@@ -88,7 +89,9 @@ not expose URL or hash workflow inputs; use `Settings > Secrets and variables >
 Actions` to configure `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256`.
 
 The default workflow build targets MTT S80 and uses
-`mthreads/musa:rc3.1.1-devel-ubuntu22.04`. The current public Moore Threads APT
+`mthreads/musa:rc3.1.1-devel-ubuntu22.04`. This image includes `libmusart`,
+`libmublas`, and `libmusa`, but not `libmudnn`; S80/S3000 redists therefore
+require only `libmusart` and `libmublas`. The current public Moore Threads APT
 repo is the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys.
 For S80/S3000 builds, the script does not add MCCL packages because Moore
 Threads documents MCCL as not provided for those architectures.
@@ -105,6 +108,7 @@ with these release assets:
 musa-toolkit-<version>-<package>-<os_id>-<arch>.tar.zst
 musa-toolkit-<version>-<package>-<os_id>-<arch>.tar.zst.sha256
 musa-toolkit-<version>-<package>-<os_id>-<arch>.json
+musa-toolkit-<version>-<package>-<os_id>-<arch>.bzl
 ```
 
 The archive is compressed with zstd at level 22 by default. GitHub release
@@ -137,8 +141,8 @@ bazel build //cc/tests/gpu/sycl:all \
 ```
 
 After publishing a MUSA release, copy the generated keyword arguments from the
-release notes or JSON metadata into the matching `MUSA_REDIST` entry in
-`gpu/musa/musa_redist.bzl`:
+release notes, `.bzl` snippet, or JSON metadata into the matching `MUSA_REDIST`
+entry in `gpu/musa/musa_redist.bzl`:
 
 ```starlark
 "musa_sdk_5_1_0_cc3_1_deb": _entry(
@@ -186,11 +190,13 @@ ARCH=x86_64 \
 MUSA_DEVICE=S80 \
 MUSA_SOURCE_KIND=docker \
 MUSA_DOCKER_IMAGE=mthreads/musa:rc3.1.1-devel-ubuntu22.04 \
+MUSA_DOCKER_DIGEST=sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f \
 REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```
 
-Add `MUSA_DOCKER_DIGEST=sha256:...` to pin the exact image digest.
+Override `MUSA_DOCKER_DIGEST` only when intentionally moving to a newer image
+digest.
 
 For a MUSA 5.1 S5000 APT build:
 
