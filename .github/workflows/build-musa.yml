@@ -6,11 +6,11 @@ on:
       version:
         description: Moore Threads MUSA SDK version.
         required: true
-        default: 5.1.0
+        default: rc3.1.1
       package:
         description: MUSA package key from rules_ml_toolchain gpu/musa/musa_redist.bzl.
         required: true
-        default: musa_sdk_5_1_0_cc3_1_deb
+        default: musa_sdk_rc3_1_1
       os_id:
         description: Target OS identifier used by rules_ml_toolchain.
         required: true
@@ -22,10 +22,11 @@ on:
       musa_device:
         description: Target MTT GPU device family. Empty infers from package key.
         required: false
+        default: S80
       musa_source_kind:
         description: Source kind. Use apt for the official Moore Threads APT repo, or archive for a full SDK archive.
         required: true
-        default: apt
+        default: archive
       musa_apt_repository:
         description: Moore Threads APT repository base URL.
         required: true

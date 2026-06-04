@@ -47,15 +47,15 @@ Run the `Build MUSA redist` workflow manually.
 
 Provide these inputs:
 
-- `version`: MUSA SDK version. Default: `5.1.0`.
+- `version`: MUSA SDK version. Default: `rc3.1.1`.
 - `package`: matching `MUSA_REDIST` key from
   `rules_ml_toolchain/gpu/musa/musa_redist.bzl`. Default:
-  `musa_sdk_5_1_0_cc3_1_deb`.
+  `musa_sdk_rc3_1_1`.
 - `os_id`: target OS identifier. Default: `ubuntu`.
 - `arch`: target architecture. Default: `x86_64`.
 - `musa_device`: optional target MTT GPU family. Empty infers from
-  `package`; examples: `S5000`, `S4000`, `S80`.
-- `musa_source_kind`: source mode. Default: `apt`.
+  `package`. Default: `S80`; examples: `S5000`, `S4000`, `S80`.
+- `musa_source_kind`: source mode. Default: `archive`.
 - `musa_apt_repository`: Moore Threads APT repository. Default:
   `https://dl.mthreads.com/repo/repository/ubuntu2204`.
 - `musa_apt_distribution`: APT distribution. Default: `jammy`.
@@ -74,9 +74,10 @@ extracts with `dpkg-deb`, and normalizes the result into a top-level `musa/`
 toolkit archive. Archive mode keeps the original behavior for full SDK archives
 that are provided explicitly by maintainers.
 
-Archive mode in GitHub Actions does not expose URL or hash workflow inputs.
-Configure `MUSA_SOURCE_URL` as a repository secret or variable and
-`MUSA_SOURCE_SHA256` as a repository variable before running an archive build.
+The default workflow build targets MTT S80 and uses archive mode. Archive mode
+in GitHub Actions does not expose URL or hash workflow inputs. Configure
+`MUSA_SOURCE_URL` as a repository secret or variable and `MUSA_SOURCE_SHA256` as
+a repository variable before running the default build.
 
 MTT S80 support uses archive mode. The current public Moore Threads APT repo is
 the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys, while the
@@ -166,37 +167,9 @@ REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_oneapi_redist.sh
 ```
 
-For MUSA:
-
-```bash
-ACCEPT_MUSA_TERMS=yes \
-VERSION=5.1.0 \
-PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
-OS_ID=ubuntu \
-ARCH=x86_64 \
-MUSA_SOURCE_KIND=apt \
-REPOSITORY=neudinger/rules-ml-toolchain-redists \
-scripts/build_musa_redist.sh
-```
-
-To build from an explicitly provided SDK archive instead:
-
-```bash
-ACCEPT_MUSA_TERMS=yes \
-VERSION=5.1.0 \
-PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
-OS_ID=ubuntu \
-ARCH=x86_64 \
-MUSA_SOURCE_KIND=archive \
-MUSA_SOURCE_URL=<sdk-archive-url> \
-MUSA_SOURCE_SHA256=<sdk-archive-sha256> \
-REPOSITORY=neudinger/rules-ml-toolchain-redists \
-scripts/build_musa_redist.sh
-```
-
-For MTT S80, use an approved S80 SDK archive via the same local environment
-variables, or set `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256` as repository
-secret/variable values for the workflow:
+For the default MTT S80 build, use an approved S80 SDK archive via local
+environment variables, or set `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256` as
+repository secret/variable values for the workflow:
 
 ```bash
 ACCEPT_MUSA_TERMS=yes \
@@ -208,6 +181,20 @@ MUSA_DEVICE=S80 \
 MUSA_SOURCE_KIND=archive \
 MUSA_SOURCE_URL=<s80-sdk-archive-url> \
 MUSA_SOURCE_SHA256=<s80-sdk-archive-sha256> \
+REPOSITORY=neudinger/rules-ml-toolchain-redists \
+scripts/build_musa_redist.sh
+```
+
+For a MUSA 5.1 S5000 APT build:
+
+```bash
+ACCEPT_MUSA_TERMS=yes \
+VERSION=5.1.0 \
+PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
+OS_ID=ubuntu \
+ARCH=x86_64 \
+MUSA_DEVICE=S5000 \
+MUSA_SOURCE_KIND=apt \
 REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```
