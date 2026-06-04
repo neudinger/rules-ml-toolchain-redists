@@ -53,11 +53,36 @@ Provide these inputs:
   `musa_sdk_5_1_0_cc3_1_deb`.
 - `os_id`: target OS identifier. Default: `ubuntu`.
 - `arch`: target architecture. Default: `x86_64`.
-- `musa_source_url`: explicit MUSA SDK archive URL, or set
-  `MUSA_SOURCE_URL` as a repository secret or variable.
-- `musa_source_sha256`: explicit source archive sha256, or set
-  `MUSA_SOURCE_SHA256` as a repository secret or variable.
+- `musa_device`: optional target MTT GPU family. Empty infers from
+  `package`; examples: `S5000`, `S4000`, `S80`.
+- `musa_source_kind`: source mode. Default: `apt`.
+- `musa_apt_repository`: Moore Threads APT repository. Default:
+  `https://dl.mthreads.com/repo/repository/ubuntu2204`.
+- `musa_apt_distribution`: APT distribution. Default: `jammy`.
+- `musa_apt_component`: APT component. Default: `main`.
+- `musa_apt_binary_arch`: APT binary architecture. Default: `amd64`.
+- `musa_apt_packages`: optional comma or space separated root package list.
+  Empty uses package-aware defaults: `musa-toolkit-5-1`,
+  `libmthreads-compute`, `libmudnn3-musa-5`, `libmudnn3-musa-5-dev`, plus
+  `mccl-s5000` and `mccl-s5000-dev` for `cc3_1` package keys or
+  `mccl-s4000` and `mccl-s4000-dev` for `cc2_2` package keys.
 - `accept_musa_terms`: `true`.
+
+APT mode downloads the repository `Packages.gz`, resolves the selected package
+closure, verifies each `.deb` with the SHA256 published in that package index,
+extracts with `dpkg-deb`, and normalizes the result into a top-level `musa/`
+toolkit archive. Archive mode keeps the original behavior for full SDK archives
+that are provided explicitly by maintainers.
+
+Archive mode in GitHub Actions does not expose URL or hash workflow inputs.
+Configure `MUSA_SOURCE_URL` as a repository secret or variable and
+`MUSA_SOURCE_SHA256` as a repository variable before running an archive build.
+
+MTT S80 support uses archive mode. The current public Moore Threads APT repo is
+the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys, while the
+official S80 download entry is `MUSA SDK rc3.1.1`. For S80/S3000 builds, the
+script does not add MCCL packages because Moore Threads documents MCCL as not
+provided for those architectures.
 
 The workflow publishes a GitHub release:
 
@@ -149,8 +174,40 @@ VERSION=5.1.0 \
 PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
 OS_ID=ubuntu \
 ARCH=x86_64 \
+MUSA_SOURCE_KIND=apt \
+REPOSITORY=neudinger/rules-ml-toolchain-redists \
+scripts/build_musa_redist.sh
+```
+
+To build from an explicitly provided SDK archive instead:
+
+```bash
+ACCEPT_MUSA_TERMS=yes \
+VERSION=5.1.0 \
+PACKAGE=musa_sdk_5_1_0_cc3_1_deb \
+OS_ID=ubuntu \
+ARCH=x86_64 \
+MUSA_SOURCE_KIND=archive \
 MUSA_SOURCE_URL=<sdk-archive-url> \
 MUSA_SOURCE_SHA256=<sdk-archive-sha256> \
+REPOSITORY=neudinger/rules-ml-toolchain-redists \
+scripts/build_musa_redist.sh
+```
+
+For MTT S80, use an approved S80 SDK archive via the same local environment
+variables, or set `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256` as repository
+secret/variable values for the workflow:
+
+```bash
+ACCEPT_MUSA_TERMS=yes \
+VERSION=rc3.1.1 \
+PACKAGE=musa_sdk_rc3_1_1 \
+OS_ID=ubuntu \
+ARCH=x86_64 \
+MUSA_DEVICE=S80 \
+MUSA_SOURCE_KIND=archive \
+MUSA_SOURCE_URL=<s80-sdk-archive-url> \
+MUSA_SOURCE_SHA256=<s80-sdk-archive-sha256> \
 REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```
@@ -165,7 +222,7 @@ These checks do not download the installer:
 bash -n scripts/*.sh
 ACCEPT_INTEL_EULA=no scripts/build_oneapi_redist.sh
 ACCEPT_MUSA_TERMS=no scripts/build_musa_redist.sh
-ACCEPT_MUSA_TERMS=yes VERSION=5.1.0 PACKAGE=musa_sdk_5_1_0_cc3_1_deb OS_ID=ubuntu scripts/build_musa_redist.sh
+ACCEPT_MUSA_TERMS=yes VERSION=5.1.0 PACKAGE=musa_sdk_5_1_0_cc3_1_deb OS_ID=ubuntu MUSA_SOURCE_KIND=archive scripts/build_musa_redist.sh
 ```
 
 The dry-run commands should fail before download.

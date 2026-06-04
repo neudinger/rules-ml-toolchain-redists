@@ -19,11 +19,31 @@ on:
         description: Target architecture.
         required: true
         default: x86_64
-      musa_source_url:
-        description: MUSA SDK archive URL. May be omitted when MUSA_SOURCE_URL secret or variable is set.
+      musa_device:
+        description: Target MTT GPU device family. Empty infers from package key.
         required: false
-      musa_source_sha256:
-        description: MUSA SDK archive sha256. May be omitted when MUSA_SOURCE_SHA256 secret or variable is set.
+      musa_source_kind:
+        description: Source kind. Use apt for the official Moore Threads APT repo, or archive for a full SDK archive.
+        required: true
+        default: apt
+      musa_apt_repository:
+        description: Moore Threads APT repository base URL.
+        required: true
+        default: https://dl.mthreads.com/repo/repository/ubuntu2204
+      musa_apt_distribution:
+        description: APT distribution.
+        required: true
+        default: jammy
+      musa_apt_component:
+        description: APT component.
+        required: true
+        default: main
+      musa_apt_binary_arch:
+        description: APT binary architecture.
+        required: true
+        default: amd64
+      musa_apt_packages:
+        description: Optional comma or space separated root packages. Empty uses package-aware defaults.
         required: false
       musa_source_strip_prefix:
         description: Optional root directory inside the source archive.
@@ -56,18 +76,29 @@ jobs:
       - name: Check MUSA source inputs
         shell: bash
         env:
-          MUSA_SOURCE_URL: ${{ inputs.musa_source_url || secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
-          MUSA_SOURCE_SHA256: ${{ inputs.musa_source_sha256 || secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
+          MUSA_SOURCE_KIND: ${{ inputs.musa_source_kind }}
+          MUSA_SOURCE_URL: ${{ secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
+          MUSA_SOURCE_SHA256: ${{ secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
         run: |
           set -euo pipefail
-          if [[ -z "${MUSA_SOURCE_URL}" ]]; then
-            echo "MUSA source URL is required as an input, secret, or repository variable." >&2
-            exit 1
-          fi
-          if [[ -z "${MUSA_SOURCE_SHA256}" ]]; then
-            echo "MUSA source sha256 is required as an input, secret, or repository variable." >&2
-            exit 1
-          fi
+          case "${MUSA_SOURCE_KIND}" in
+            apt)
+              ;;
+            archive)
+              if [[ -z "${MUSA_SOURCE_URL}" ]]; then
+                echo "MUSA source URL is required as an input, secret, or repository variable for archive builds." >&2
+                exit 1
+              fi
+              if [[ -z "${MUSA_SOURCE_SHA256}" ]]; then
+                echo "MUSA source sha256 is required as an input, secret, or repository variable for archive builds." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "musa_source_kind must be apt or archive: ${MUSA_SOURCE_KIND}" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Check disk space
         shell: bash
@@ -88,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y unzip zstd
+          sudo apt-get install -y dpkg unzip zstd
 
       - name: Build archive
         shell: bash
@@ -97,8 +128,15 @@ jobs:
           PACKAGE: ${{ inputs.package }}
           OS_ID: ${{ inputs.os_id }}
           ARCH: ${{ inputs.arch }}
-          MUSA_SOURCE_URL: ${{ inputs.musa_source_url || secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
-          MUSA_SOURCE_SHA256: ${{ inputs.musa_source_sha256 || secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
+          MUSA_DEVICE: ${{ inputs.musa_device }}
+          MUSA_SOURCE_KIND: ${{ inputs.musa_source_kind }}
+          MUSA_APT_REPOSITORY: ${{ inputs.musa_apt_repository }}
+          MUSA_APT_DISTRIBUTION: ${{ inputs.musa_apt_distribution }}
+          MUSA_APT_COMPONENT: ${{ inputs.musa_apt_component }}
+          MUSA_APT_BINARY_ARCH: ${{ inputs.musa_apt_binary_arch }}
+          MUSA_APT_PACKAGES: ${{ inputs.musa_apt_packages || vars.MUSA_APT_PACKAGES }}
+          MUSA_SOURCE_URL: ${{ secrets.MUSA_SOURCE_URL || vars.MUSA_SOURCE_URL }}
+          MUSA_SOURCE_SHA256: ${{ secrets.MUSA_SOURCE_SHA256 || vars.MUSA_SOURCE_SHA256 }}
           MUSA_SOURCE_STRIP_PREFIX: ${{ inputs.musa_source_strip_prefix || vars.MUSA_SOURCE_STRIP_PREFIX }}
           ACCEPT_MUSA_TERMS: yes
           REPOSITORY: ${{ github.repository }}
@@ -122,8 +160,17 @@ jobs:
           print()
           print("| Field | Value |")
           print("| --- | --- |")
-          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "source_sha256", "release_url"]:
-              print(f"| {key} | `{metadata[key]}` |")
+          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "device", "source_kind", "source_sha256", "apt_packages_index_sha256", "release_url"]:
+              if key in metadata and metadata[key] != "":
+                  print(f"| {key} | `{metadata[key]}` |")
+          if metadata.get("apt_packages"):
+              print()
+              print("## APT packages")
+              print()
+              print("| Package | Version | SHA256 |")
+              print("| --- | --- | --- |")
+              for pkg in metadata["apt_packages"]:
+                  print(f"| `{pkg['name']}` | `{pkg['version']}` | `{pkg['sha256']}` |")
           print()
           print("```starlark")
           print(metadata["starlark_update"])
