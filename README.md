@@ -55,7 +55,12 @@ Provide these inputs:
 - `arch`: target architecture. Default: `x86_64`.
 - `musa_device`: optional target MTT GPU family. Empty infers from
   `package`. Default: `S80`; examples: `S5000`, `S4000`, `S80`.
-- `musa_source_kind`: source mode. Default: `archive`.
+- `musa_source_kind`: source mode. Default: `docker`.
+- `musa_docker_image`: Docker image containing the MUSA toolkit. Default:
+  `mthreads/musa:rc3.1.1-devel-ubuntu22.04`.
+- `musa_docker_digest`: optional expected image digest, for example
+  `sha256:...`.
+- `musa_docker_platform`: Docker platform. Default: `linux/amd64`.
 - `musa_apt_repository`: Moore Threads APT repository. Default:
   `https://dl.mthreads.com/repo/repository/ubuntu2204`.
 - `musa_apt_distribution`: APT distribution. Default: `jammy`.
@@ -68,23 +73,25 @@ Provide these inputs:
   `mccl-s4000` and `mccl-s4000-dev` for `cc2_2` package keys.
 - `accept_musa_terms`: `true`.
 
+Docker mode pulls a Moore Threads `mthreads/musa` image from Docker Hub, exports
+its filesystem, locates the toolkit by `bin/mcc`, and normalizes it into a
+top-level `musa/` toolkit archive. Set `musa_docker_digest` or the
+`MUSA_DOCKER_DIGEST` repository variable to fail the build if Docker Hub returns
+an unexpected image digest.
+
 APT mode downloads the repository `Packages.gz`, resolves the selected package
 closure, verifies each `.deb` with the SHA256 published in that package index,
 extracts with `dpkg-deb`, and normalizes the result into a top-level `musa/`
 toolkit archive. Archive mode keeps the original behavior for full SDK archives
-that are provided explicitly by maintainers.
+that are provided explicitly by maintainers. Archive mode in GitHub Actions does
+not expose URL or hash workflow inputs; use `Settings > Secrets and variables >
+Actions` to configure `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256`.
 
-The default workflow build targets MTT S80 and uses archive mode. Archive mode
-in GitHub Actions does not expose URL or hash workflow inputs. Configure
-`MUSA_SOURCE_URL` as a repository secret or variable and `MUSA_SOURCE_SHA256` as
-a repository variable before running the default build. In GitHub, use
-`Settings > Secrets and variables > Actions` for those values.
-
-MTT S80 support uses archive mode. The current public Moore Threads APT repo is
-the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys, while the
-official S80 download entry is `MUSA SDK rc3.1.1`. For S80/S3000 builds, the
-script does not add MCCL packages because Moore Threads documents MCCL as not
-provided for those architectures.
+The default workflow build targets MTT S80 and uses
+`mthreads/musa:rc3.1.1-devel-ubuntu22.04`. The current public Moore Threads APT
+repo is the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys.
+For S80/S3000 builds, the script does not add MCCL packages because Moore
+Threads documents MCCL as not provided for those architectures.
 
 The workflow publishes a GitHub release:
 
@@ -168,9 +175,7 @@ REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_oneapi_redist.sh
 ```
 
-For the default MTT S80 build, use an approved S80 SDK archive via local
-environment variables, or set `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256` as
-repository secret/variable values for the workflow:
+For the default MTT S80 build from Docker Hub:
 
 ```bash
 ACCEPT_MUSA_TERMS=yes \
@@ -179,12 +184,13 @@ PACKAGE=musa_sdk_rc3_1_1 \
 OS_ID=ubuntu \
 ARCH=x86_64 \
 MUSA_DEVICE=S80 \
-MUSA_SOURCE_KIND=archive \
-MUSA_SOURCE_URL=<s80-sdk-archive-url> \
-MUSA_SOURCE_SHA256=<s80-sdk-archive-sha256> \
+MUSA_SOURCE_KIND=docker \
+MUSA_DOCKER_IMAGE=mthreads/musa:rc3.1.1-devel-ubuntu22.04 \
 REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```
+
+Add `MUSA_DOCKER_DIGEST=sha256:...` to pin the exact image digest.
 
 For a MUSA 5.1 S5000 APT build:
 

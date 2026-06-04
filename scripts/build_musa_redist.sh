@@ -16,6 +16,10 @@ MUSA_APT_DISTRIBUTION="${MUSA_APT_DISTRIBUTION:-jammy}"
 MUSA_APT_COMPONENT="${MUSA_APT_COMPONENT:-main}"
 MUSA_APT_BINARY_ARCH="${MUSA_APT_BINARY_ARCH:-amd64}"
 MUSA_APT_PACKAGES="${MUSA_APT_PACKAGES:-}"
+MUSA_DOCKER_IMAGE="${MUSA_DOCKER_IMAGE:-mthreads/musa:rc3.1.1-devel-ubuntu22.04}"
+MUSA_DOCKER_DIGEST="${MUSA_DOCKER_DIGEST:-}"
+MUSA_DOCKER_PLATFORM="${MUSA_DOCKER_PLATFORM:-linux/amd64}"
+MUSA_DOCKER_PULL="${MUSA_DOCKER_PULL:-yes}"
 MUSA_DEVICE="${MUSA_DEVICE:-}"
 ACCEPT_MUSA_TERMS="${ACCEPT_MUSA_TERMS:-}"
 REPOSITORY="${REPOSITORY:-${GITHUB_REPOSITORY:-<owner>/rules-ml-toolchain-redists}}"
@@ -30,6 +34,7 @@ DOWNLOAD_DIR="${WORK_DIR}/downloads"
 SOURCE_DIR="${WORK_DIR}/musa-source"
 APT_ROOT="${WORK_DIR}/musa-apt-root"
 APT_MANIFEST="${WORK_DIR}/musa-apt-packages.tsv"
+DOCKER_ROOT="${WORK_DIR}/musa-docker-root"
 STAGE_ROOT="${WORK_DIR}/musa-stage"
 INSTALL_DIR="${STAGE_ROOT}/musa"
 
@@ -63,10 +68,10 @@ validate_identifier() {
 
 validate_source_kind() {
   case "$MUSA_SOURCE_KIND" in
-    archive|apt)
+    archive|apt|docker)
       ;;
     *)
-      fail "MUSA_SOURCE_KIND must be 'archive' or 'apt': ${MUSA_SOURCE_KIND}"
+      fail "MUSA_SOURCE_KIND must be 'archive', 'apt', or 'docker': ${MUSA_SOURCE_KIND}"
       ;;
   esac
 }
@@ -259,13 +264,13 @@ PY
 }
 
 copy_apt_runtime_files() {
-  local apt_root="$1"
+  local root="$1"
 
   mkdir -p "$INSTALL_DIR/lib"
   while IFS= read -r path; do
     cp -a "$path" "$INSTALL_DIR/lib/"
   done < <(
-    find "$apt_root" -type f,l \( \
+    find "$root" -type f,l \( \
       -name 'libmusa.so*' -o \
       -name 'libcuda2musa.so*' \
     \) -print
@@ -355,6 +360,59 @@ stage_apt_source() {
   copy_apt_runtime_files "$APT_ROOT"
 }
 
+resolve_docker_digest() {
+  local image="$1"
+
+  docker image inspect "$image" --format '{{json .RepoDigests}}' | python3 -c 'import json
+import sys
+
+digests = json.load(sys.stdin)
+for digest in digests or []:
+    if "@sha256:" in digest:
+        print(digest.rsplit("@", 1)[1])
+        break
+'
+}
+
+stage_docker_source() {
+  local image="$MUSA_DOCKER_IMAGE"
+  local pull_args=()
+  local container=""
+  local resolved_digest=""
+
+  if [[ -n "$MUSA_DOCKER_PLATFORM" ]]; then
+    pull_args+=(--platform "$MUSA_DOCKER_PLATFORM")
+  fi
+
+  if [[ "$MUSA_DOCKER_PULL" != "no" ]]; then
+    echo "Pulling MUSA Docker image ${image}"
+    docker pull "${pull_args[@]}" "$image"
+  else
+    echo "Using local MUSA Docker image ${image}"
+  fi
+
+  resolved_digest="$(resolve_docker_digest "$image")"
+  if [[ -n "$MUSA_DOCKER_DIGEST" && "$resolved_digest" != "$MUSA_DOCKER_DIGEST" ]]; then
+    fail "MUSA Docker image digest mismatch. expected: ${MUSA_DOCKER_DIGEST} actual: ${resolved_digest}"
+  fi
+  MUSA_DOCKER_RESOLVED_DIGEST="$resolved_digest"
+
+  echo "Exporting MUSA Docker image filesystem"
+  container="$(docker create "$image" true)"
+  mkdir -p "$DOCKER_ROOT"
+  docker export "$container" | tar -C "$DOCKER_ROOT" -xf -
+  docker rm "$container" >/dev/null
+  container=""
+
+  toolkit_root="$(find_toolkit_root "$DOCKER_ROOT" "")"
+  validate_toolkit_root "$toolkit_root"
+
+  echo "Staging MUSA toolkit from ${toolkit_root}"
+  mkdir -p "$INSTALL_DIR"
+  tar -C "$toolkit_root" -cf - . | tar -C "$INSTALL_DIR" -xf -
+  copy_apt_runtime_files "$DOCKER_ROOT"
+}
+
 if [[ "$ACCEPT_MUSA_TERMS" != "yes" ]]; then
   fail "Set ACCEPT_MUSA_TERMS=yes to confirm MUSA SDK license and redistribution approval before downloading or packaging MUSA."
 fi
@@ -365,15 +423,21 @@ require_value OS_ID "$OS_ID"
 require_value ARCH "$ARCH"
 validate_source_kind
 
-if [[ "$MUSA_SOURCE_KIND" == "archive" ]]; then
-  require_value MUSA_SOURCE_URL "$MUSA_SOURCE_URL"
-  require_value MUSA_SOURCE_SHA256 "$MUSA_SOURCE_SHA256"
-else
-  require_value MUSA_APT_REPOSITORY "$MUSA_APT_REPOSITORY"
-  require_value MUSA_APT_DISTRIBUTION "$MUSA_APT_DISTRIBUTION"
-  require_value MUSA_APT_COMPONENT "$MUSA_APT_COMPONENT"
-  require_value MUSA_APT_BINARY_ARCH "$MUSA_APT_BINARY_ARCH"
-fi
+case "$MUSA_SOURCE_KIND" in
+  archive)
+    require_value MUSA_SOURCE_URL "$MUSA_SOURCE_URL"
+    require_value MUSA_SOURCE_SHA256 "$MUSA_SOURCE_SHA256"
+    ;;
+  apt)
+    require_value MUSA_APT_REPOSITORY "$MUSA_APT_REPOSITORY"
+    require_value MUSA_APT_DISTRIBUTION "$MUSA_APT_DISTRIBUTION"
+    require_value MUSA_APT_COMPONENT "$MUSA_APT_COMPONENT"
+    require_value MUSA_APT_BINARY_ARCH "$MUSA_APT_BINARY_ARCH"
+    ;;
+  docker)
+    require_value MUSA_DOCKER_IMAGE "$MUSA_DOCKER_IMAGE"
+    ;;
+esac
 
 validate_identifier VERSION "$VERSION"
 validate_identifier PACKAGE "$PACKAGE"
@@ -396,11 +460,17 @@ if (( ZSTD_LEVEL < 1 || ZSTD_LEVEL > 22 )); then
 fi
 
 required_tools=(curl df find sha256sum stat tar python3 zstd)
-if [[ "$MUSA_SOURCE_KIND" == "archive" ]]; then
-  required_tools+=(basename)
-else
-  required_tools+=(dpkg-deb gzip)
-fi
+case "$MUSA_SOURCE_KIND" in
+  archive)
+    required_tools+=(basename)
+    ;;
+  apt)
+    required_tools+=(dpkg-deb gzip)
+    ;;
+  docker)
+    required_tools+=(docker)
+    ;;
+esac
 for tool in "${required_tools[@]}"; do
   require_tool "$tool"
 done
@@ -413,11 +483,12 @@ if (( available_bytes < MIN_FREE_BYTES )); then
   exit 1
 fi
 
-rm -rf "$DIST_DIR" "$SOURCE_DIR" "$APT_ROOT" "$STAGE_ROOT"
+rm -rf "$DIST_DIR" "$SOURCE_DIR" "$APT_ROOT" "$DOCKER_ROOT" "$STAGE_ROOT"
 mkdir -p "$DIST_DIR" "$DOWNLOAD_DIR" "$SOURCE_DIR" "$STAGE_ROOT"
 
 APT_PACKAGES_INDEX_SHA256=""
 APT_PACKAGES_JSON="[]"
+MUSA_DOCKER_RESOLVED_DIGEST=""
 
 case "$MUSA_SOURCE_KIND" in
   archive)
@@ -426,6 +497,9 @@ case "$MUSA_SOURCE_KIND" in
   apt)
     stage_apt_source
     APT_PACKAGES_JSON="$(packages_to_json "$APT_MANIFEST")"
+    ;;
+  docker)
+    stage_docker_source
     ;;
 esac
 
@@ -487,8 +561,10 @@ EOF
 export VERSION PACKAGE OS_ID ARCH MUSA_DEVICE MUSA_SOURCE_KIND MUSA_SOURCE_SHA256 \
   MUSA_SOURCE_STRIP_PREFIX MUSA_APT_REPOSITORY MUSA_APT_DISTRIBUTION \
   MUSA_APT_COMPONENT MUSA_APT_BINARY_ARCH APT_PACKAGES_INDEX_SHA256 \
-  APT_PACKAGES_JSON ARCHIVE_BASENAME archive_size ZSTD_LEVEL archive_sha256 \
-  RELEASE_TAG RELEASE_URL starlark_kwargs starlark_update METADATA_FILE
+  APT_PACKAGES_JSON MUSA_DOCKER_IMAGE MUSA_DOCKER_DIGEST \
+  MUSA_DOCKER_PLATFORM MUSA_DOCKER_PULL MUSA_DOCKER_RESOLVED_DIGEST \
+  ARCHIVE_BASENAME archive_size ZSTD_LEVEL archive_sha256 RELEASE_TAG \
+  RELEASE_URL starlark_kwargs starlark_update METADATA_FILE
 python3 - <<'PY'
 import json
 import os
@@ -522,6 +598,15 @@ if metadata["source_kind"] == "apt":
         "apt_binary_arch": os.environ["MUSA_APT_BINARY_ARCH"],
         "apt_packages_index_sha256": os.environ["APT_PACKAGES_INDEX_SHA256"],
         "apt_packages": json.loads(os.environ["APT_PACKAGES_JSON"]),
+    })
+
+if metadata["source_kind"] == "docker":
+    metadata.update({
+        "docker_image": os.environ["MUSA_DOCKER_IMAGE"],
+        "docker_digest": os.environ["MUSA_DOCKER_RESOLVED_DIGEST"],
+        "docker_expected_digest": os.environ["MUSA_DOCKER_DIGEST"],
+        "docker_platform": os.environ["MUSA_DOCKER_PLATFORM"],
+        "docker_pull": os.environ["MUSA_DOCKER_PULL"],
     })
 
 path = Path(os.environ["METADATA_FILE"])

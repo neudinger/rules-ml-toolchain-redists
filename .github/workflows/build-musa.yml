@@ -24,9 +24,20 @@ on:
         required: false
         default: S80
       musa_source_kind:
-        description: Source kind. Use apt for the official Moore Threads APT repo, or archive for a full SDK archive.
+        description: Source kind. Use docker for Docker Hub, apt for the official APT repo, or archive for a full SDK archive.
         required: true
-        default: archive
+        default: docker
+      musa_docker_image:
+        description: Docker image containing the MUSA toolkit.
+        required: true
+        default: mthreads/musa:rc3.1.1-devel-ubuntu22.04
+      musa_docker_digest:
+        description: Optional expected image digest, for example sha256:...
+        required: false
+      musa_docker_platform:
+        description: Docker platform.
+        required: true
+        default: linux/amd64
       musa_apt_repository:
         description: Moore Threads APT repository base URL.
         required: true
@@ -85,6 +96,8 @@ jobs:
           case "${MUSA_SOURCE_KIND}" in
             apt)
               ;;
+            docker)
+              ;;
             archive)
               if [[ -z "${MUSA_SOURCE_URL}" ]]; then
                 echo "MUSA_SOURCE_URL is required as a repository secret or variable for archive builds." >&2
@@ -96,7 +109,7 @@ jobs:
               fi
               ;;
             *)
-              echo "musa_source_kind must be apt or archive: ${MUSA_SOURCE_KIND}" >&2
+              echo "musa_source_kind must be apt, archive, or docker: ${MUSA_SOURCE_KIND}" >&2
               exit 1
               ;;
           esac
@@ -131,6 +144,9 @@ jobs:
           ARCH: ${{ inputs.arch }}
           MUSA_DEVICE: ${{ inputs.musa_device }}
           MUSA_SOURCE_KIND: ${{ inputs.musa_source_kind }}
+          MUSA_DOCKER_IMAGE: ${{ inputs.musa_docker_image }}
+          MUSA_DOCKER_DIGEST: ${{ inputs.musa_docker_digest || vars.MUSA_DOCKER_DIGEST }}
+          MUSA_DOCKER_PLATFORM: ${{ inputs.musa_docker_platform }}
           MUSA_APT_REPOSITORY: ${{ inputs.musa_apt_repository }}
           MUSA_APT_DISTRIBUTION: ${{ inputs.musa_apt_distribution }}
           MUSA_APT_COMPONENT: ${{ inputs.musa_apt_component }}
@@ -161,7 +177,7 @@ jobs:
           print()
           print("| Field | Value |")
           print("| --- | --- |")
-          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "device", "source_kind", "source_sha256", "apt_packages_index_sha256", "release_url"]:
+          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "device", "source_kind", "source_sha256", "docker_image", "docker_digest", "apt_packages_index_sha256", "release_url"]:
               if key in metadata and metadata[key] != "":
                   print(f"| {key} | `{metadata[key]}` |")
           if metadata.get("apt_packages"):
