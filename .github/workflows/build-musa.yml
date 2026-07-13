@@ -6,11 +6,11 @@ on:
       version:
         description: Moore Threads MUSA SDK version.
         required: true
-        default: rc3.1.1
+        default: 4.0.1
       package:
         description: MUSA package key from rules_ml_toolchain gpu/musa/musa_redist.bzl.
         required: true
-        default: musa_sdk_rc3_1_1
+        default: musa_sdk_4_0_1_intel_ubuntu
       os_id:
         description: Target OS identifier used by rules_ml_toolchain.
         required: true
@@ -30,15 +30,19 @@ on:
       musa_docker_image:
         description: Docker image containing the MUSA toolkit.
         required: true
-        default: mthreads/musa:rc3.1.1-devel-ubuntu22.04
+        default: docker.io/mthreads/musa:rc4.0.1-devel-ubuntu22.04
       musa_docker_digest:
         description: Optional expected image digest, for example sha256:...
         required: false
-        default: sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f
+        default: sha256:29cf86b16e8dd0ce705d890cba609e1d7bc87ce5e562d1f71d14540836ed42e9
       musa_docker_platform:
         description: Docker platform.
         required: true
         default: linux/amd64
+      musa_docker_toolkit_path:
+        description: Path to the MUSA toolkit inside the Docker image.
+        required: true
+        default: /usr/local/musa
       musa_apt_repository:
         description: Moore Threads APT repository base URL.
         required: true
@@ -148,6 +152,7 @@ jobs:
           MUSA_DOCKER_IMAGE: ${{ inputs.musa_docker_image }}
           MUSA_DOCKER_DIGEST: ${{ inputs.musa_docker_digest || vars.MUSA_DOCKER_DIGEST }}
           MUSA_DOCKER_PLATFORM: ${{ inputs.musa_docker_platform }}
+          MUSA_DOCKER_TOOLKIT_PATH: ${{ inputs.musa_docker_toolkit_path }}
           MUSA_APT_REPOSITORY: ${{ inputs.musa_apt_repository }}
           MUSA_APT_DISTRIBUTION: ${{ inputs.musa_apt_distribution }}
           MUSA_APT_COMPONENT: ${{ inputs.musa_apt_component }}
@@ -178,7 +183,7 @@ jobs:
           print()
           print("| Field | Value |")
           print("| --- | --- |")
-          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "device", "source_kind", "source_sha256", "docker_image", "docker_digest", "apt_packages_index_sha256", "release_url"]:
+          for key in ["archive_name", "archive_size", "compression", "zstd_level", "sha256", "device", "source_kind", "source_sha256", "docker_image", "docker_digest", "docker_toolkit_path", "apt_packages_index_sha256", "release_url"]:
               if key in metadata and metadata[key] != "":
                   print(f"| {key} | `{metadata[key]}` |")
           if metadata.get("apt_packages"):

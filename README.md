@@ -47,21 +47,23 @@ Run the `Build MUSA redist` workflow manually.
 
 Provide these inputs:
 
-- `version`: MUSA SDK version. Default: `rc3.1.1`.
+- `version`: MUSA SDK version. Default: `4.0.1`.
 - `package`: matching `MUSA_REDIST` key from
   `rules_ml_toolchain/gpu/musa/musa_redist.bzl`. Default:
-  `musa_sdk_rc3_1_1`.
+  `musa_sdk_4_0_1_intel_ubuntu`.
 - `os_id`: target OS identifier. Default: `ubuntu`.
 - `arch`: target architecture. Default: `x86_64`.
 - `musa_device`: optional target MTT GPU family. Empty infers from
   `package`. Default: `S80`; examples: `S5000`, `S4000`, `S80`.
 - `musa_source_kind`: source mode. Default: `docker`.
 - `musa_docker_image`: Docker image containing the MUSA toolkit. Default:
-  `mthreads/musa:rc3.1.1-devel-ubuntu22.04`.
+  `docker.io/mthreads/musa:rc4.0.1-devel-ubuntu22.04`.
 - `musa_docker_digest`: optional expected image digest, for example
   `sha256:...`. Default:
-  `sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f`.
+  `sha256:29cf86b16e8dd0ce705d890cba609e1d7bc87ce5e562d1f71d14540836ed42e9`.
 - `musa_docker_platform`: Docker platform. Default: `linux/amd64`.
+- `musa_docker_toolkit_path`: toolkit path inside the Docker image. Default:
+  `/usr/local/musa`.
 - `musa_apt_repository`: Moore Threads APT repository. Default:
   `https://dl.mthreads.com/repo/repository/ubuntu2204`.
 - `musa_apt_distribution`: APT distribution. Default: `jammy`.
@@ -74,9 +76,11 @@ Provide these inputs:
   `mccl-s4000` and `mccl-s4000-dev` for `cc2_2` package keys.
 - `accept_musa_terms`: `true`.
 
-Docker mode pulls a Moore Threads `mthreads/musa` image from Docker Hub, exports
-its filesystem, locates the toolkit by `bin/mcc`, and normalizes it into a
-top-level `musa/` toolkit archive. Set `musa_docker_digest` or the
+Docker mode pulls a Moore Threads `mthreads/musa` image from Docker Hub, copies
+the toolkit directly from `musa_docker_toolkit_path`, adds the image's real
+`libmusa` driver libraries, and normalizes it into a top-level `musa/` toolkit
+archive. Direct copying avoids exporting and duplicating the approximately
+10 GB unpacked rc4.0.1 image toolkit. Set `musa_docker_digest` or the
 `MUSA_DOCKER_DIGEST` repository variable to fail the build if Docker Hub returns
 an unexpected image digest.
 
@@ -89,8 +93,10 @@ not expose URL or hash workflow inputs; use `Settings > Secrets and variables >
 Actions` to configure `MUSA_SOURCE_URL` and `MUSA_SOURCE_SHA256`.
 
 The default workflow build targets MTT S80 and uses
-`mthreads/musa:rc3.1.1-devel-ubuntu22.04`. This image includes `libmusart`,
-`libmublas`, and `libmusa`, but not `libmudnn`; S80/S3000 redists therefore
+`docker.io/mthreads/musa:rc4.0.1-devel-ubuntu22.04`. This image includes
+MUSA Toolkit 4.0.1 with `mcc`, `libmusart`, and `libmublas`; its real
+`libmusa` is copied from the image's system library directory. It does not
+include `libmudnn`, so S80/S3000 redists
 require only `libmusart` and `libmublas`. The current public Moore Threads APT
 repo is the MUSA 5.1 Ubuntu package source used for S5000/S4000 package keys.
 For S80/S3000 builds, the script does not add MCCL packages because Moore
@@ -182,15 +188,18 @@ scripts/build_oneapi_redist.sh
 For the default MTT S80 build from Docker Hub:
 
 ```bash
+ZSTD_LEVEL=1 \
 ACCEPT_MUSA_TERMS=yes \
-VERSION=rc3.1.1 \
-PACKAGE=musa_sdk_rc3_1_1 \
+VERSION=4.0.1 \
+PACKAGE=musa_sdk_4_0_1_intel_ubuntu \
 OS_ID=ubuntu \
 ARCH=x86_64 \
 MUSA_DEVICE=S80 \
 MUSA_SOURCE_KIND=docker \
-MUSA_DOCKER_IMAGE=mthreads/musa:rc3.1.1-devel-ubuntu22.04 \
-MUSA_DOCKER_DIGEST=sha256:63593da18978d5778ea7289dbc1b9953d293fca7a56e748bd4d7d18411ac2f6f \
+MUSA_DOCKER_IMAGE="$IMAGE" \
+MUSA_DOCKER_DIGEST="$DIGEST" \
+MUSA_DOCKER_PLATFORM=linux/amd64 \
+MUSA_DOCKER_TOOLKIT_PATH=/usr/local/musa \
 REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```

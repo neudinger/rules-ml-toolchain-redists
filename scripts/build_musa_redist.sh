@@ -16,9 +16,10 @@ MUSA_APT_DISTRIBUTION="${MUSA_APT_DISTRIBUTION:-jammy}"
 MUSA_APT_COMPONENT="${MUSA_APT_COMPONENT:-main}"
 MUSA_APT_BINARY_ARCH="${MUSA_APT_BINARY_ARCH:-amd64}"
 MUSA_APT_PACKAGES="${MUSA_APT_PACKAGES:-}"
-MUSA_DOCKER_IMAGE="${MUSA_DOCKER_IMAGE:-mthreads/musa:rc3.1.1-devel-ubuntu22.04}"
+MUSA_DOCKER_IMAGE="${MUSA_DOCKER_IMAGE:-docker.io/mthreads/musa:rc4.0.1-devel-ubuntu22.04}"
 MUSA_DOCKER_DIGEST="${MUSA_DOCKER_DIGEST:-}"
 MUSA_DOCKER_PLATFORM="${MUSA_DOCKER_PLATFORM:-linux/amd64}"
+MUSA_DOCKER_TOOLKIT_PATH="${MUSA_DOCKER_TOOLKIT_PATH:-/usr/local/musa}"
 MUSA_DOCKER_PULL="${MUSA_DOCKER_PULL:-yes}"
 MUSA_DEVICE="${MUSA_DEVICE:-}"
 MUSA_REQUIRED_LIBS="${MUSA_REQUIRED_LIBS:-}"
@@ -35,7 +36,6 @@ DOWNLOAD_DIR="${WORK_DIR}/downloads"
 SOURCE_DIR="${WORK_DIR}/musa-source"
 APT_ROOT="${WORK_DIR}/musa-apt-root"
 APT_MANIFEST="${WORK_DIR}/musa-apt-packages.tsv"
-DOCKER_ROOT="${WORK_DIR}/musa-docker-root"
 STAGE_ROOT="${WORK_DIR}/musa-stage"
 INSTALL_DIR="${STAGE_ROOT}/musa"
 
@@ -46,6 +46,15 @@ METADATA_FILE="${DIST_DIR}/musa-toolkit-${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}.j
 STARLARK_FILE="${DIST_DIR}/musa-toolkit-${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}.bzl"
 RELEASE_TAG="musa-v${VERSION}-${PACKAGE}-${OS_ID}-${ARCH}"
 RELEASE_URL="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/${ARCHIVE_BASENAME}"
+ACTIVE_DOCKER_CONTAINER=""
+
+cleanup_active_docker_container() {
+  if [[ -n "$ACTIVE_DOCKER_CONTAINER" ]] && command -v docker >/dev/null 2>&1; then
+    docker rm -f "$ACTIVE_DOCKER_CONTAINER" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup_active_docker_container EXIT
 
 fail() {
   echo "$*" >&2
@@ -398,11 +407,45 @@ for digest in digests or []:
 '
 }
 
+copy_docker_runtime_files() {
+  local container="$1"
+  local path=""
+  local name=""
+  local runtime_paths=""
+  declare -A copied=()
+
+  runtime_paths="$(docker exec "$container" sh -c '
+    for root in /usr/lib /lib /driver/usr/lib /driver/lib; do
+      if [ -d "$root" ]; then
+        find -H "$root" \( -type f -o -type l \) -name "libmusa.so*" -print
+      fi
+    done
+  ' | sort -u)"
+
+  if [[ -z "$runtime_paths" ]]; then
+    echo "No external libmusa driver libraries found in the Docker image"
+    return
+  fi
+
+  mkdir -p "$INSTALL_DIR/lib"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    name="${path##*/}"
+    if [[ -n "${copied[$name]:-}" ]]; then
+      continue
+    fi
+    echo "Copying MUSA driver library ${path}"
+    docker cp "${container}:${path}" "$INSTALL_DIR/lib/"
+    copied[$name]=1
+  done <<< "$runtime_paths"
+}
+
 stage_docker_source() {
   local image="$MUSA_DOCKER_IMAGE"
   local pull_args=()
   local container=""
   local resolved_digest=""
+  local toolkit_path=""
 
   if [[ -n "$MUSA_DOCKER_PLATFORM" ]]; then
     pull_args+=(--platform "$MUSA_DOCKER_PLATFORM")
@@ -421,20 +464,23 @@ stage_docker_source() {
   fi
   MUSA_DOCKER_RESOLVED_DIGEST="$resolved_digest"
 
-  echo "Exporting MUSA Docker image filesystem"
-  container="$(docker create "$image" true)"
-  mkdir -p "$DOCKER_ROOT"
-  docker export "$container" | tar -C "$DOCKER_ROOT" -xf -
-  docker rm "$container" >/dev/null
-  container=""
+  container="$(docker create "$image" sh -c 'while :; do sleep 3600; done')"
+  ACTIVE_DOCKER_CONTAINER="$container"
+  docker start "$container" >/dev/null
 
-  toolkit_root="$(find_toolkit_root "$DOCKER_ROOT" "")"
-  validate_toolkit_root "$toolkit_root"
+  toolkit_path="$(docker exec "$container" readlink -f "$MUSA_DOCKER_TOOLKIT_PATH" || true)"
+  if [[ -z "$toolkit_path" ]]; then
+    fail "MUSA Docker toolkit path does not exist in ${image}: ${MUSA_DOCKER_TOOLKIT_PATH}"
+  fi
 
-  echo "Staging MUSA toolkit from ${toolkit_root}"
+  echo "Staging MUSA toolkit from ${image}:${toolkit_path}"
   mkdir -p "$INSTALL_DIR"
-  tar -C "$toolkit_root" -cf - . | tar -C "$INSTALL_DIR" -xf -
-  copy_apt_runtime_files "$DOCKER_ROOT"
+  docker cp "${container}:${toolkit_path}/." "$INSTALL_DIR"
+  validate_toolkit_root "$INSTALL_DIR"
+  copy_docker_runtime_files "$container"
+
+  docker rm -f "$container" >/dev/null
+  ACTIVE_DOCKER_CONTAINER=""
 }
 
 if [[ "$ACCEPT_MUSA_TERMS" != "yes" ]]; then
@@ -460,6 +506,7 @@ case "$MUSA_SOURCE_KIND" in
     ;;
   docker)
     require_value MUSA_DOCKER_IMAGE "$MUSA_DOCKER_IMAGE"
+    require_value MUSA_DOCKER_TOOLKIT_PATH "$MUSA_DOCKER_TOOLKIT_PATH"
     ;;
 esac
 
@@ -507,7 +554,7 @@ if (( available_bytes < MIN_FREE_BYTES )); then
   exit 1
 fi
 
-rm -rf "$DIST_DIR" "$SOURCE_DIR" "$APT_ROOT" "$DOCKER_ROOT" "$STAGE_ROOT"
+rm -rf "$DIST_DIR" "$SOURCE_DIR" "$APT_ROOT" "$STAGE_ROOT"
 mkdir -p "$DIST_DIR" "$DOWNLOAD_DIR" "$SOURCE_DIR" "$STAGE_ROOT"
 
 APT_PACKAGES_INDEX_SHA256=""
@@ -588,7 +635,8 @@ export VERSION PACKAGE OS_ID ARCH MUSA_DEVICE MUSA_SOURCE_KIND MUSA_SOURCE_SHA25
   MUSA_SOURCE_STRIP_PREFIX MUSA_REQUIRED_LIBS MUSA_APT_REPOSITORY \
   MUSA_APT_DISTRIBUTION MUSA_APT_COMPONENT MUSA_APT_BINARY_ARCH \
   APT_PACKAGES_INDEX_SHA256 APT_PACKAGES_JSON MUSA_DOCKER_IMAGE \
-  MUSA_DOCKER_DIGEST MUSA_DOCKER_PLATFORM MUSA_DOCKER_PULL \
+  MUSA_DOCKER_DIGEST MUSA_DOCKER_PLATFORM MUSA_DOCKER_TOOLKIT_PATH \
+  MUSA_DOCKER_PULL \
   MUSA_DOCKER_RESOLVED_DIGEST ARCHIVE_BASENAME archive_size ZSTD_LEVEL \
   archive_sha256 RELEASE_TAG RELEASE_URL starlark_kwargs starlark_update \
   METADATA_FILE STARLARK_FILE
@@ -635,6 +683,7 @@ if metadata["source_kind"] == "docker":
         "docker_digest": os.environ["MUSA_DOCKER_RESOLVED_DIGEST"],
         "docker_expected_digest": os.environ["MUSA_DOCKER_DIGEST"],
         "docker_platform": os.environ["MUSA_DOCKER_PLATFORM"],
+        "docker_toolkit_path": os.environ["MUSA_DOCKER_TOOLKIT_PATH"],
         "docker_pull": os.environ["MUSA_DOCKER_PULL"],
     })
 
