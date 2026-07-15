@@ -34,7 +34,7 @@ on:
       musa_docker_digest:
         description: Optional expected image digest, for example sha256:...
         required: false
-        default: sha256:29cf86b16e8dd0ce705d890cba609e1d7bc87ce5e562d1f71d14540836ed42e9
+        default: sha256:588cd910ec828ec347a23d4ddcd2fc595bb3eb9ca327a8f5263070f5dbe97fef
       musa_docker_platform:
         description: Docker platform.
         required: true
