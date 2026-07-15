@@ -79,7 +79,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Check MUSA terms input
         shell: bash
@@ -118,6 +118,28 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Disk space before cleanup"
+          df -h "${GITHUB_WORKSPACE}"
+
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}"
+          if command -v docker >/dev/null 2>&1; then
+            docker system prune --all --force --volumes
+          fi
+          sudo apt-get clean
+
+          echo "Disk space after cleanup"
+          df -h "${GITHUB_WORKSPACE}"
 
       - name: Check disk space
         shell: bash
