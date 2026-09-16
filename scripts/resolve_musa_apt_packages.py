@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -73,19 +74,48 @@ def choose_candidate(
     op: str | None,
     version: str | None,
     index: dict[str, list[dict[str, str]]],
+    preferred_version: str,
 ) -> dict[str, str] | None:
     candidates = index.get(name, [])
     if not candidates:
         return None
 
-    if op == "=" and version:
-        for candidate in candidates:
-            if candidate.get("Version") == version:
-                return candidate
-        raise SystemExit(f"package {name} has no exact version {version}")
+    def satisfies(candidate: dict[str, str]) -> bool:
+        candidate_version = candidate.get("Version", "")
+        if not op or not version:
+            return True
+        if op == "=":
+            return candidate_version == version
+        return subprocess.run(
+            ["dpkg", "--compare-versions", candidate_version, op, version],
+            check=False,
+        ).returncode == 0
 
-    # Moore Threads publishes newest duplicate package stanzas first. Keep that
-    # order so mccl-s5000 resolves to 2.11.4 before the older 2.3.0 entry.
+    candidates = [candidate for candidate in candidates if satisfies(candidate)]
+    if not candidates:
+        return None
+
+    if preferred_version:
+        parts = preferred_version.split(".")
+        preferred_series = "-".join(parts[:2]) if len(parts) >= 2 else ""
+
+        def preference(candidate: dict[str, str]) -> tuple[int, int]:
+            fields = " ".join(
+                candidate.get(field, "")
+                for field in ("Package", "Version", "Depends")
+            )
+            exact_version = candidate.get("Version") == preferred_version
+            matching_series = bool(
+                preferred_series
+                and (
+                    f"-{preferred_series}" in fields
+                    or f"= {preferred_version}" in fields
+                )
+            )
+            return (0 if exact_version else 1, 0 if matching_series else 1)
+
+        candidates = sorted(candidates, key=preference)
+
     return candidates[0]
 
 
@@ -101,6 +131,7 @@ def dep_groups(depends: str) -> list[list[str]]:
 def resolve(
     roots: list[str],
     index: dict[str, list[dict[str, str]]],
+    preferred_version: str = "",
 ) -> list[dict[str, str]]:
     resolved: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -115,7 +146,9 @@ def resolve(
             continue
 
         name, op, version = parsed
-        candidate = choose_candidate(name, op, version, index)
+        candidate = choose_candidate(
+            name, op, version, index, preferred_version
+        )
         if candidate is None:
             if required:
                 raise SystemExit(f"root package not found in MUSA APT index: {name}")
@@ -134,7 +167,16 @@ def resolve(
                 if not parsed_alternative:
                     continue
                 alt_name, alt_op, alt_version = parsed_alternative
-                if choose_candidate(alt_name, alt_op, alt_version, index) is not None:
+                if (
+                    choose_candidate(
+                        alt_name,
+                        alt_op,
+                        alt_version,
+                        index,
+                        preferred_version,
+                    )
+                    is not None
+                ):
                     selected = alternative
                     break
             if selected:
@@ -154,11 +196,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--packages-file", required=True, type=Path)
     parser.add_argument("--root-packages", required=True)
+    parser.add_argument("--preferred-version", default="")
     args = parser.parse_args()
 
     stanzas = parse_packages(args.packages_file)
     index = package_index(stanzas)
-    resolved = resolve(root_packages(args.root_packages), index)
+    resolved = resolve(
+        root_packages(args.root_packages), index, args.preferred_version
+    )
 
     for stanza in resolved:
         missing = [

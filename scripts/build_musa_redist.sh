@@ -213,9 +213,12 @@ required_musa_libs() {
     return
   fi
 
-  libs=(libmusart.so libmublas.so)
+  libs=(libmusa.so libmusart.so libmublas.so)
   case "$MUSA_DEVICE" in
     S80|S3000)
+      ;;
+    S4000|S5000)
+      libs+=(libmudnn.so libmufft.so libmccl.so)
       ;;
     *)
       libs+=(libmudnn.so)
@@ -358,6 +361,7 @@ stage_apt_source() {
   python3 "${ROOT_DIR}/scripts/resolve_musa_apt_packages.py" \
     --packages-file "$packages_txt" \
     --root-packages "$root_packages" \
+    --preferred-version "$VERSION" \
     > "$APT_MANIFEST"
 
   mkdir -p "$APT_ROOT" "${DOWNLOAD_DIR}/apt"
@@ -536,7 +540,7 @@ case "$MUSA_SOURCE_KIND" in
     required_tools+=(basename)
     ;;
   apt)
-    required_tools+=(dpkg-deb gzip)
+    required_tools+=(dpkg dpkg-deb gzip)
     ;;
   docker)
     required_tools+=(docker)

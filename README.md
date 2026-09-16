@@ -221,6 +221,24 @@ REPOSITORY=neudinger/rules-ml-toolchain-redists \
 scripts/build_musa_redist.sh
 ```
 
+For a MUSA 5.1 S4000 APT build:
+
+```bash
+ACCEPT_MUSA_TERMS=yes \
+VERSION=5.1.0 \
+PACKAGE=musa_sdk_5_1_0_cc2_2_deb \
+OS_ID=ubuntu \
+ARCH=x86_64 \
+MUSA_DEVICE=S4000 \
+MUSA_SOURCE_KIND=apt \
+REPOSITORY=neudinger/rules-ml-toolchain-redists \
+scripts/build_musa_redist.sh
+```
+
+The S4000 archive is validated for `libmusa`, `libmusart`, `libmublas`,
+`libmudnn`, `libmufft`, and the S4000 MCCL library selected by the `cc2_2`
+package closure.
+
 Set `ZSTD_LEVEL=1..22` to override the compression level.
 
 ## Local Dry Checks
