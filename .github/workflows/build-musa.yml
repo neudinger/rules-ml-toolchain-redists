@@ -6,11 +6,11 @@ on:
       version:
         description: Moore Threads MUSA SDK version.
         required: true
-        default: 4.0.1
+        default: 5.1.0
       package:
         description: MUSA package key from rules_ml_toolchain gpu/musa/musa_redist.bzl.
         required: true
-        default: musa_sdk_4_0_1_intel_ubuntu
+        default: musa_sdk_5_1_0_cc2_2_deb
       os_id:
         description: Target OS identifier used by rules_ml_toolchain.
         required: true
@@ -22,11 +22,11 @@ on:
       musa_device:
         description: Target MTT GPU device family. Empty infers from package key.
         required: false
-        default: S80
+        default: S4000
       musa_source_kind:
         description: Source kind. Use docker for Docker Hub, apt for the official APT repo, or archive for a full SDK archive.
         required: true
-        default: docker
+        default: apt
       musa_docker_image:
         description: Docker image containing the MUSA toolkit.
         required: true
@@ -68,7 +68,7 @@ on:
       accept_musa_terms:
         description: Type true to confirm MUSA SDK license and redistribution approval for this run.
         required: true
-        default: "false"
+        default: "true"
 
 permissions:
   contents: write
@@ -193,7 +193,8 @@ jobs:
         run: |
           set -euo pipefail
           metadata="dist/musa-toolkit-${{ inputs.version }}-${{ inputs.package }}-${{ inputs.os_id }}-${{ inputs.arch }}.json"
-          python3 -c 'import json
+          python3 - "$metadata" > dist/release-notes.md <<'PY'
+          import json
           import sys
           from pathlib import Path
 
@@ -219,7 +220,8 @@ jobs:
           print()
           print("```starlark")
           print(metadata["starlark_update"])
-          print("```")' "$metadata" > dist/release-notes.md
+          print("```")
+          PY
 
       - name: Publish GitHub release
         shell: bash
